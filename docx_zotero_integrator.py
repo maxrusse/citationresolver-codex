@@ -3,7 +3,7 @@
 
 Features:
 - Detect in-text numeric citations like (1), (2, 4), (13-18), (13–18)
-- Parse numbered references from the "B1. References" section
+- Parse numbered references from a detected References/Bibliography section
 - Match references against local Zotero library (`zotero.sqlite`) when available
 - Optionally add unmatched references to local Zotero via connector HTTP endpoint
 - Write Word field runs with ADDIN ZOTERO_ITEM CSL_CITATION JSON code
@@ -26,7 +26,6 @@ import string
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 from urllib import error, request
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -40,9 +39,21 @@ W = f"{{{W_NS}}}"
 CITE_PAREN_RE = re.compile(r"\((\d+(?:\s*[-–—,]\s*\d+)*)\)")
 CITE_BRACKET_RE = re.compile(r"\[(\d+(?:\s*[-–—,]\s*\d+)*)\]")
 CITE_SUPER_TOKEN_RE = re.compile(r"\(?\[?(\d+(?:\s*[-–—,]\s*\d+)*)\]?\)?")
-REF_LINE_RE = re.compile(r"^\s*(\d+)\.\s+(.+?)\s*$")
+REF_LINE_RE = re.compile(
+    r"^\s*(?:\[(?P<bracket>\d+)\]|(?P<punct>\d+)[\.\)\]]|(?P<plain>\d+))\s+(?P<body>.+?)\s*$"
+)
 DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
 YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2}|21\d{2})\b")
+REF_HEADING_TERMS = (
+    "references",
+    "reference",
+    "bibliography",
+    "works cited",
+    "literature",
+    "referenzen",
+    "literatur",
+    "quellen",
+)
 
 
 @dataclass
@@ -519,15 +530,15 @@ def _create_bibliography_paragraph(template_para: ET.Element | None) -> ET.Eleme
     return p
 
 
-def _find_reference_block_end(paragraphs: list[ET.Element], start_idx: int) -> int:
+def _find_reference_block_end(paragraphs: list[ET.Element], first_ref_idx: int) -> int:
     # End is exclusive.
-    i = start_idx + 1
+    i = first_ref_idx
     while i < len(paragraphs):
         txt = _extract_paragraph_text(paragraphs[i]).strip()
         if not txt:
             i += 1
             continue
-        if REF_LINE_RE.match(txt):
+        if _parse_reference_line(txt) is not None:
             i += 1
             continue
         break
@@ -537,7 +548,8 @@ def _find_reference_block_end(paragraphs: list[ET.Element], start_idx: int) -> i
 def _insert_or_replace_bibliography_field(
     root: ET.Element,
     paragraphs: list[ET.Element],
-    ref_start: int,
+    heading_idx: int | None,
+    first_ref_idx: int,
     replace_reference_list: bool,
 ) -> bool:
     # Skip if bibliography field already exists.
@@ -552,17 +564,21 @@ def _insert_or_replace_bibliography_field(
     body_children = list(body)
     p_to_idx = {id(p): idx for idx, p in enumerate(body_children) if p.tag == f"{W}p"}
 
-    start_para = paragraphs[ref_start]
-    heading_body_idx = p_to_idx.get(id(start_para))
-    if heading_body_idx is None:
+    if first_ref_idx >= len(paragraphs):
+        return False
+    first_ref_para = paragraphs[first_ref_idx]
+    first_ref_body_idx = p_to_idx.get(id(first_ref_para))
+    if first_ref_body_idx is None:
         return False
 
-    block_end = _find_reference_block_end(paragraphs, ref_start)
-    first_ref_para = paragraphs[ref_start + 1] if (ref_start + 1) < len(paragraphs) else None
+    heading_para = paragraphs[heading_idx] if heading_idx is not None else None
+    heading_body_idx = p_to_idx.get(id(heading_para)) if heading_para is not None else None
+
+    block_end = _find_reference_block_end(paragraphs, first_ref_idx)
     new_bibl_para = _create_bibliography_paragraph(first_ref_para)
 
-    insert_at = heading_body_idx + 1
-    if replace_reference_list and first_ref_para is not None:
+    insert_at = (heading_body_idx + 1) if heading_body_idx is not None else first_ref_body_idx
+    if replace_reference_list:
         # Rebuild paragraph -> body index map after possible earlier edits.
         body_children = list(body)
         p_to_idx = {id(p): idx for idx, p in enumerate(body_children) if p.tag == f"{W}p"}
@@ -570,7 +586,7 @@ def _insert_or_replace_bibliography_field(
         if start_ref_idx is not None:
             # Collect paragraphs in the current reference list block.
             refs_to_remove: list[ET.Element] = []
-            for p in paragraphs[ref_start + 1 : block_end]:
+            for p in paragraphs[first_ref_idx:block_end]:
                 refs_to_remove.append(p)
             for p in refs_to_remove:
                 if p in body:
@@ -629,25 +645,131 @@ def _extract_paragraph_text(para: ET.Element) -> str:
     return "".join(t.text or "" for t in para.findall(f".//{W}t"))
 
 
-def _find_references_start(paragraphs: list[ET.Element]) -> int | None:
+def _parse_reference_line(text: str) -> tuple[int, str] | None:
+    m = REF_LINE_RE.match(text.strip())
+    if not m:
+        return None
+    num_s = m.group("bracket") or m.group("punct") or m.group("plain")
+    if not num_s or not num_s.isdigit():
+        return None
+    number = int(num_s)
+    body = (m.group("body") or "").strip()
+    if number <= 0 or number > 10000:
+        return None
+    if len(_norm_text(body)) < 3:
+        return None
+    return number, body
+
+
+def _looks_like_reference_heading(text: str) -> bool:
+    n = _norm_text(text)
+    if not n:
+        return False
+    if len(n.split()) > 7:
+        return False
+    for term in REF_HEADING_TERMS:
+        if term in n:
+            return True
+    return False
+
+
+def _reference_block_stats(paragraphs: list[ET.Element], first_ref_idx: int) -> tuple[int, int]:
+    # Returns (count, end_idx_exclusive)
+    count = 0
+    prev_num: int | None = None
+    i = first_ref_idx
+    end_idx = first_ref_idx
+
+    while i < len(paragraphs):
+        txt = _extract_paragraph_text(paragraphs[i]).strip()
+        if not txt:
+            i += 1
+            continue
+        line = _parse_reference_line(txt)
+        if line is None:
+            break
+        n, _body = line
+        if prev_num is not None:
+            # Keep block detection robust against false positives by requiring
+            # non-decreasing numbering with bounded jumps.
+            if n < prev_num or n > (prev_num + 10):
+                break
+        prev_num = n
+        count += 1
+        i += 1
+        end_idx = i
+
+    return count, end_idx
+
+
+def _find_reference_section(paragraphs: list[ET.Element]) -> dict[str, int | str | None] | None:
+    best_heading_choice: tuple[int, int, int, str] | None = None
+    # (count, heading_idx, first_ref_idx, heading_text)
+    for i, p in enumerate(paragraphs):
+        heading_text = _extract_paragraph_text(p).strip()
+        if not _looks_like_reference_heading(heading_text):
+            continue
+
+        for j in range(i + 1, min(i + 9, len(paragraphs))):
+            candidate = _extract_paragraph_text(paragraphs[j]).strip()
+            if not candidate:
+                continue
+            if _parse_reference_line(candidate) is None:
+                continue
+            count, _end = _reference_block_stats(paragraphs, j)
+            if count < 2:
+                continue
+            choice = (count, i, j, heading_text)
+            if best_heading_choice is None or (choice[0], -choice[1]) > (
+                best_heading_choice[0],
+                -best_heading_choice[1],
+            ):
+                best_heading_choice = choice
+            break
+
+    if best_heading_choice is not None:
+        return {
+            "heading_idx": best_heading_choice[1],
+            "heading_text": best_heading_choice[3],
+            "first_ref_idx": best_heading_choice[2],
+            "detected_by": "heading_and_numbered_block",
+        }
+
+    # Fallback when heading is absent/non-standard: pick strongest numbered block.
+    best_block: tuple[int, int] | None = None  # (count, first_ref_idx)
     for i, p in enumerate(paragraphs):
         txt = _extract_paragraph_text(p).strip()
-        if txt.lower().startswith("b1. references"):
-            return i
-    return None
+        if _parse_reference_line(txt) is None:
+            continue
+        count, _end = _reference_block_stats(paragraphs, i)
+        if count < 3:
+            continue
+        choice = (count, i)
+        if best_block is None or (choice[0], -choice[1]) > (best_block[0], -best_block[1]):
+            best_block = choice
+
+    if best_block is None:
+        return None
+    return {
+        "heading_idx": None,
+        "heading_text": None,
+        "first_ref_idx": best_block[1],
+        "detected_by": "numbered_block_fallback",
+    }
 
 
-def _parse_reference_map(paragraphs: Iterable[ET.Element], start_idx: int) -> dict[int, RefEntry]:
+def _parse_reference_map(paragraphs: list[ET.Element], first_ref_idx: int) -> dict[int, RefEntry]:
     refs: dict[int, RefEntry] = {}
-    for p in list(paragraphs)[start_idx + 1 :]:
+    block_end = _find_reference_block_end(paragraphs, first_ref_idx)
+    for p in paragraphs[first_ref_idx:block_end]:
         txt = _extract_paragraph_text(p).strip()
         if not txt:
             continue
-        m = REF_LINE_RE.match(txt)
-        if not m:
+        parsed = _parse_reference_line(txt)
+        if not parsed:
             continue
-        n = int(m.group(1))
-        refs[n] = _parse_reference_entry(n, m.group(2))
+        n, body = parsed
+        refs[n] = _parse_reference_entry(n, body)
     return refs
 
 
@@ -868,19 +990,24 @@ def convert_docx(
 
     root = ET.fromstring(xml_bytes)
     paragraphs = root.findall(f".//{W}p")
-    ref_start = _find_references_start(paragraphs)
-    if ref_start is None:
-        raise RuntimeError("Could not find 'B1. References' heading in document")
-    refs = _parse_reference_map(paragraphs, ref_start)
+    ref_section = _find_reference_section(paragraphs)
+    if ref_section is None:
+        raise RuntimeError("Could not locate a numbered reference section in document")
+    heading_idx = ref_section["heading_idx"]
+    first_ref_idx = int(ref_section["first_ref_idx"])
+    scan_cutoff_idx = int(heading_idx) if heading_idx is not None else first_ref_idx
+    refs = _parse_reference_map(paragraphs, first_ref_idx)
+    if not refs:
+        raise RuntimeError("Detected reference section but could not parse numbered references")
     ref_numbers = set(refs.keys())
 
     if citation_pattern == "auto":
         selected_citation_pattern, citation_pattern_stats = _detect_citation_pattern(
-            paragraphs, ref_start, ref_numbers, include_superscript=True
+            paragraphs, scan_cutoff_idx, ref_numbers, include_superscript=True
         )
     elif citation_pattern == "auto-safe":
         selected_citation_pattern, citation_pattern_stats = _detect_citation_pattern(
-            paragraphs, ref_start, ref_numbers, include_superscript=False
+            paragraphs, scan_cutoff_idx, ref_numbers, include_superscript=False
         )
     else:
         selected_citation_pattern = citation_pattern
@@ -921,7 +1048,7 @@ def convert_docx(
     zotero_version = _detect_zotero_version(connector_base) if inject_doc_prefs else None
 
     for p_idx, para in enumerate(paragraphs):
-        if p_idx >= ref_start:
+        if p_idx >= scan_cutoff_idx:
             break
         old_children = list(para)
         new_children: list[ET.Element] = []
@@ -979,12 +1106,13 @@ def convert_docx(
     # Re-scan paragraphs after citation edits before bibliography insertion.
     paragraphs = root.findall(f".//{W}p")
     if add_bibliography_field:
-        ref_start = _find_references_start(paragraphs)
-        if ref_start is not None:
+        ref_section_after = _find_reference_section(paragraphs)
+        if ref_section_after is not None:
             bibliography_field_inserted = _insert_or_replace_bibliography_field(
                 root=root,
                 paragraphs=paragraphs,
-                ref_start=ref_start,
+                heading_idx=ref_section_after["heading_idx"],
+                first_ref_idx=int(ref_section_after["first_ref_idx"]),
                 replace_reference_list=replace_reference_list,
             )
 
@@ -1051,6 +1179,7 @@ def convert_docx(
         "style_id_used": effective_style_id,
         "citation_pattern_selected": selected_citation_pattern,
         "citation_pattern_stats": citation_pattern_stats,
+        "reference_section": ref_section,
         "word_update_report": word_update_report,
         "local_user_key": index.local_user_key if index else None,
         "zotero_db": str(zotero_db) if zotero_db else None,
@@ -1222,7 +1351,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-add-bibliography-field",
         action="store_false",
         dest="add_bibliography_field",
-        help="Disable inserting a live Zotero bibliography field at B1. References",
+        help="Disable inserting a live Zotero bibliography field at detected reference section",
     )
     p.add_argument(
         "--no-replace-reference-list",

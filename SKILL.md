@@ -8,12 +8,13 @@ description: Managed end-to-end DOCX citation repair for Zotero. Use when citati
 ## Managed Workflow (Required)
 
 1. Run `docx_zotero_integrator.py` on the input `.docx`.
-2. Execute attempt 1 with preferred pattern (`auto-safe` by default).
-3. Evaluate quality gates (`fields_ok`, `bibliography_ok`, `doc_prefs_ok`, `unmatched_count`).
-4. Retry fallback patterns automatically if needed.
-5. Select best attempt and return one final output.
-6. Optionally run Word field update.
-7. Return output path + JSON report summary.
+2. Detect reference section adaptively (References/Bibliography/Referenzen headings or strongest numbered block fallback).
+3. Execute attempt 1 with preferred pattern (`auto-safe` by default).
+4. Evaluate quality gates (`fields_ok`, `bibliography_ok`, `doc_prefs_ok`, `unmatched_count`).
+5. Retry fallback patterns automatically if needed.
+6. Select best attempt and return one final output.
+7. Optionally run Word field update.
+8. Return output path + JSON report summary.
 
 ## Primary Command
 

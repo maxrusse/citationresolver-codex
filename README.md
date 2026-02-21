@@ -11,7 +11,7 @@ This repository is focused on one job:
 
 The script does not run as blind one-shot. It executes step-by-step attempts with quality gates:
 
-- parse references from `B1. References`
+- detect reference section headings (e.g. References/Bibliography/Referenzen) and fallback to the strongest numbered reference block
 - match/add references in local Zotero
 - rebuild in-text citation fields
 - insert/update bibliography field
@@ -54,6 +54,7 @@ The JSON report includes:
 
 - `workflow_mode` (`managed`)
 - `managed_workflow` attempts and selected attempt
+- `reference_section` detection details (`heading_idx`, `first_ref_idx`, `detected_by`)
 - pattern detection stats
 - matched/unmatched references
 - conversion counts and Zotero match details
