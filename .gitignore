@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+*.docx
+*.zip
+.tmp_citationresolver_trials/
+*.log
