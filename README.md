@@ -62,3 +62,16 @@ The JSON report includes:
 ## Codex Skill
 
 `SKILL.md` defines the operational workflow so Codex can run this tool as a managed repair pipeline.
+
+Install/update the local Codex skill in one command:
+
+```bash
+python install_skill.py
+```
+
+Optional:
+
+```bash
+python install_skill.py --codex-home "C:/path/to/.codex"
+python install_skill.py --skill-name citationresolver --dry-run
+```
