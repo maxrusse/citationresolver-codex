@@ -1,8 +1,10 @@
-# Codex CitationResolver
+# codex_citation
 
-Managed DOCX citation-repair tool for Codex workflows.
+Codex skill project with two separate skills:
+- `citation-resolver` for DOCX/Zotero citation repair.
+- `citation-audit` for claim-level manuscript citation auditing.
 
-This repository is focused on one job:
+The resolver workflow is focused on one job:
 - take a Word `.docx` with broken plain numeric citations,
 - rebuild live Zotero citation/bibliography fields,
 - validate the result with a managed multi-step workflow.
@@ -62,7 +64,7 @@ The JSON report includes:
 
 ## Codex Skill
 
-`SKILL.md` defines the operational workflow so Codex can run this tool as a managed repair pipeline.
+`SKILL.md` defines the operational workflow for `citation-resolver` so Codex can run this tool as a managed repair pipeline.
 
 Install/update the local Codex skill in one command:
 
@@ -74,5 +76,15 @@ Optional:
 
 ```bash
 python install_skill.py --codex-home "C:/path/to/.codex"
-python install_skill.py --skill-name citationresolver --dry-run
+python install_skill.py --skill-name citation-resolver --dry-run
 ```
+
+## Citation Audit Skill
+
+The `citation-audit/` folder contains the second skill:
+- `citation-audit/SKILL.md`
+- `citation-audit/agents/openai.yaml`
+- `citation-audit/references/*`
+
+Install by copying that folder to:
+- `<codex_home>/skills/citation-audit`

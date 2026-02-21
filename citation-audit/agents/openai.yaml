@@ -1,0 +1,7 @@
+interface:
+  display_name: "Citation Audit"
+  short_description: "Claim-level citation audit for manuscript DOCX"
+  default_prompt: "Use $citation-audit to verify every cited manuscript claim and produce corrected DOCX plus Manuscript_Citation_Audit.xlsx."
+
+
+

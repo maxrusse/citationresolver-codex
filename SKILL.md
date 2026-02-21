@@ -1,9 +1,9 @@
 ---
-name: citationresolver
+name: citation-resolver
 description: Manual-first agent workflow for messy DOCX citation repair. Use when citations are dirty/inconsistent and require preflight inspection + cleanup checklist before script rebuild.
 ---
 
-# CitationResolver Skill
+# Citation Resolver Skill
 
 ## Operating Mode
 

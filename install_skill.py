@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install/update the citationresolver skill into Codex home."""
+"""Install/update the citation-resolver skill into Codex home."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def install_skill(codex_home: Path, skill_name: str, dry_run: bool) -> dict:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Install/update citationresolver skill into Codex")
+    p = argparse.ArgumentParser(description="Install/update citation-resolver skill into Codex")
     p.add_argument(
         "--codex-home",
         default=str(_default_codex_home()),
@@ -56,8 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--skill-name",
-        default="citationresolver",
-        help="Skill folder name under <codex_home>/skills (default: citationresolver)",
+        default="citation-resolver",
+        help="Skill folder name under <codex_home>/skills (default: citation-resolver)",
     )
     p.add_argument("--dry-run", action="store_true", help="Show install plan without writing files")
     return p
