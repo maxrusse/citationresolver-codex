@@ -32,22 +32,22 @@ The script does not run as blind one-shot. It executes step-by-step attempts wit
 ## Usage
 
 ```bash
-python docx_zotero_integrator.py "/path/to/file.docx"
+python citation-resolver/docx_zotero_integrator.py "/path/to/file.docx"
 ```
 
 Optional:
 
 ```bash
 # set first-attempt pattern preference (workflow may retry others)
-python docx_zotero_integrator.py "/path/to/file.docx" --citation-pattern auto-safe
-python docx_zotero_integrator.py "/path/to/file.docx" --citation-pattern auto
-python docx_zotero_integrator.py "/path/to/file.docx" --citation-pattern paren
+python citation-resolver/docx_zotero_integrator.py "/path/to/file.docx" --citation-pattern auto-safe
+python citation-resolver/docx_zotero_integrator.py "/path/to/file.docx" --citation-pattern auto
+python citation-resolver/docx_zotero_integrator.py "/path/to/file.docx" --citation-pattern paren
 
 # run Word field refresh after generation
-python docx_zotero_integrator.py "/path/to/file.docx" --word-update
+python citation-resolver/docx_zotero_integrator.py "/path/to/file.docx" --word-update
 
 # write report file
-python docx_zotero_integrator.py "/path/to/file.docx" --report-json ./report.json
+python citation-resolver/docx_zotero_integrator.py "/path/to/file.docx" --report-json ./report.json
 ```
 
 ## Output
@@ -64,19 +64,19 @@ The JSON report includes:
 
 ## Codex Skill
 
-`SKILL.md` defines the operational workflow for `citation-resolver` so Codex can run this tool as a managed repair pipeline.
+`citation-resolver/SKILL.md` defines the operational workflow for `citation-resolver` so Codex can run this tool as a managed repair pipeline.
 
 Install/update the local Codex skill in one command:
 
 ```bash
-python install_skill.py
+python citation-resolver/install_skill.py
 ```
 
 Optional:
 
 ```bash
-python install_skill.py --codex-home "C:/path/to/.codex"
-python install_skill.py --skill-name citation-resolver --dry-run
+python citation-resolver/install_skill.py --codex-home "C:/path/to/.codex"
+python citation-resolver/install_skill.py --skill-name citation-resolver --dry-run
 ```
 
 ## Citation Audit Skill
@@ -85,6 +85,11 @@ The `citation-audit/` folder contains the second skill:
 - `citation-audit/SKILL.md`
 - `citation-audit/agents/openai.yaml`
 - `citation-audit/references/*`
+
+The `citation-resolver/` folder contains the resolver skill:
+- `citation-resolver/SKILL.md`
+- `citation-resolver/docx_zotero_integrator.py`
+- `citation-resolver/install_skill.py`
 
 Install by copying that folder to:
 - `<codex_home>/skills/citation-audit`
